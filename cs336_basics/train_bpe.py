@@ -55,7 +55,7 @@ def find_chunk_boundaries(file: BinaryIO, desired_num_chunks: int, split_special
 num_processes = 8  # Number of processes to use for parallelization
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""  # pretokenization rule
 pretokens = defaultdict(int)
-with open("/Users/desjajja/Projects/standord-cs336/assignment1-basics/data/TinyStoriesV2-GPT4-valid.txt", "rb") as f:
+with open("/Users/dengxiangyu/dev/stanford-cs336-assignment1/data/brief.txt", "rb") as f:
     boundaries = find_chunk_boundaries(f, num_processes, SPECIAL_TOKENS[0].encode("utf-8")) # By convention the first element is end-of-text token
 
     # The following is a serial implementation, but you can parallelize this
@@ -92,7 +92,7 @@ def find_max_pair(merges):
 vocab = [token.encode() for token in SPECIAL_TOKENS]
 vocab.extend([bytes([i]) for i in range(256)])
 merges = []
-MAX_MERGES = 100
+MAX_MERGES = 10
 while len(merges) < MAX_MERGES:
     pair_count = get_pair_count(pretokens=pretokens)
     max_pair, count = find_max_pair(pair_count)
