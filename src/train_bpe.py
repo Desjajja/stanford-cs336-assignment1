@@ -5,6 +5,8 @@ import regex as re
 import concurrent.futures
 import copy
 import time
+from tqdm import tqdm
+
 
 
 class BPETokenizer:
@@ -30,7 +32,7 @@ class BPETokenizer:
             boundaries = self._find_chunk_boundaries(
                 fp, self.num_processes, self.SPECIAL_TOKENS[0].encode("utf-8")
             )  # By convention the first element is end-of-text token
-
+        pbar = tqdm(total=len(boundaries) - 1, desc="Pretokenizing...")
         with concurrent.futures.ProcessPoolExecutor(max_workers=self.num_processes) as executor:
             futures = [
                 executor.submit(self._init_pretokens, data_path, start, end)
@@ -43,10 +45,12 @@ class BPETokenizer:
                 print(result)
                 for byte, count in result.items():
                     self.pretokens[byte] += count
+                pbar.update(1)
 
             except Exception as e:
                 print(e)
-
+        pbar.close()
+        
     def _update_pretokens(self, new_merge: bytes):
         pretokens_copy = copy.deepcopy(self.pretokens)
         for token, count in self.pretokens.items():
@@ -146,16 +150,13 @@ class BPETokenizer:
         return max(pair_count.items(), key=lambda item: (item[1], item[0]))
 
     def train(self, data_path: str, max_merges: int):
-        print("Pretokenizing...")
-        print("*" * 80)
         ts = time.time()
         self._pretokenize(data_path)
         te = time.time()
         print(f"Pretokenization took {te - ts:.2f} seconds")
-        print("*" * 80)
 
-        print("Training...")
         ts = time.time()
+        pbar = tqdm(total=max_merges, desc="Training...")
         while len(self.merges) < max_merges:
             pair_count = self.get_pair_count()
             if len(pair_count) == 0:  # exhausted all pairs to merge
@@ -165,6 +166,8 @@ class BPETokenizer:
             new_token = max_pair[0] + max_pair[1]
             self.vocab.append(new_token)
             self.pretokens = self._update_pretokens(new_token)
+            pbar.update(1)
+        pbar.close()
         te = time.time()
         print(f"Done training in {te - ts:.2f} seconds")
 
@@ -173,9 +176,9 @@ class BPETokenizer:
 
 
 if __name__ == "__main__":
-    profile = False
-    data_path = "./data/TinyStoriesV2-GPT4-valid.txt"
-    max_merges = 800
+    profile = True
+    data_path = "./data/TinyStoriesV2-GPT4-train.txt"
+    max_merges = 10_000
     def main():
         tokenizer = BPETokenizer(num_processes=8)
         vocab, merges = tokenizer.train(data_path, max_merges)
@@ -190,7 +193,7 @@ if __name__ == "__main__":
         p.sort_stats("cumulative").print_stats(50)
         p.print_callees(20)
         # Save readable stats to a text file
-        with open("./profile/profile_readable.txt", "w") as f:
+        with open("./profile/multiprocess_train_10_000.txt", "w") as f:
             p.stream = f
             p.print_stats()
     else:
