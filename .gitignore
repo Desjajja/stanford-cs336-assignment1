@@ -163,5 +163,6 @@ cython_debug/
 *.zip
 
 data/
-profile/
+output/
 .DS_Store
+.vscode/

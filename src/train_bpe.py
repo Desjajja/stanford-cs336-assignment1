@@ -203,29 +203,33 @@ class BPETokenizer:
 
 
 if __name__ == "__main__":
-    profile = False
-    data_path = "./data/TinyStoriesV2-GPT4-train.txt"
-    max_merges = 800
+    import os
     profile = True
-    data_path = "./data/TinyStoriesV2-GPT4-train.txt"
-    max_merges = 10_000
+    data_path = "./data/TinyStoriesV2-GPT4-valid.txt"
+    max_merges = 80
     def main():
         tokenizer = BPETokenizer(num_processes=8)
         vocab, merges = tokenizer.train(data_path, max_merges)
-        print(vocab)
-        print(merges)
+        with open("./output/merges.txt", "w") as f_merges:
+            for merge in merges:
+                f_merges.write(f"{merge[0]} {merge[1]}\n")
+        with open("./output/vocab.txt", "w") as f_vocab:
+            for idx, token in vocab.items():
+                f_vocab.write(f"{idx}\t{token}\n")
     if profile:
         import cProfile
         import pstats
         
-        cProfile.run('main()', "./profile/profile.txt")
-        p = pstats.Stats("./profile/profile.txt")
+        cProfile.run('main()', "./output/profile.txt")
+        p = pstats.Stats("./output/profile.txt")
         p.sort_stats("cumulative").print_stats(50)
         p.print_callees(20)
         # Save readable stats to a text file
-        with open("./profile/cached_train_10_000.txt", "w") as f:
+        with open(f"./output/cached_train_{max_merges}.txt", "w") as f:
             p.stream = f
             p.print_stats()
+        if os.path.exists("./output/profile.txt"):
+            os.remove("./output/profile.txt")
     else:
         
         main()
