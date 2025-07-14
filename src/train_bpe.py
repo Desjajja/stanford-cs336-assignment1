@@ -17,6 +17,7 @@ class BPETokenizer:
 
     pretokens = defaultdict(int)
     merges = []
+    pair_count = defaultdict(int)
 
     def __init__(self, num_processes: int = 8):
         # MAX_VOCAB = 60
@@ -55,18 +56,38 @@ class BPETokenizer:
                 continue
             pleft = 0
             token_copy = list()
+            previous_token = None
+            merged_token_lhs = None
+            merged_token_rhs = None
             while pleft < len(token) - 1:
                 pright = pleft + 1
                 if token[pleft] + token[pright] == new_merge:
+                    merged_token_lhs = token[pleft]
+                    merged_token_rhs = token[pright]
+                    
                     token_copy.append(new_merge)
-                    # pleft += 1
+                    if previous_token is None:
+                        pass
+                    elif previous_token == new_merge:
+                        self.pair_count[(new_merge, new_merge)] += count
+                    elif previous_token:
+                        self.pair_count[(previous_token, merged_token_lhs)] -= count
+                        self.pair_count[(previous_token, new_merge)] += count
+
+                    previous_token = new_merge
                     flag_modified = True
                     pleft += 2
                 else:
+                    if previous_token == new_merge:
+                        self.pair_count[(merged_token_rhs, token[pleft])] -= count
                     token_copy.append(token[pleft])
+                    previous_token = token[pleft]
                     pleft += 1
+                
             if pleft == len(token) - 1:
                 token_copy.append(token[-1])
+                if previous_token == new_merge:
+                    self.pair_count[(merged_token_rhs, token[pleft])] -= count
             if flag_modified:
                 del pretokens_copy[token]
                 pretokens_copy[tuple(token_copy)] = count
@@ -134,33 +155,39 @@ class BPETokenizer:
             if word not in self.SPECIAL_TOKENS
         }
 
-    def get_pair_count(self):
+    def _init_pair_count(self):
         pair_count = defaultdict(int)
         for token, count in self.pretokens.items():
             if len(token) > 1:
                 for lhs, rhs in zip(token[:-1], token[1:]):
                     pair_count[(lhs, rhs)] += count
-        return pair_count
+        self.pair_count = pair_count
 
-    def find_max_pair(self, pair_count):
-        return max(pair_count.items(), key=lambda item: (item[1], item[0]))
+    def pop_max_pair(self):
+        pair, count = max(self.pair_count.items(), key=lambda item: (item[1], item[0]))
+        del self.pair_count[pair]
+        return pair, count
+
+
 
     def train(self, data_path: str, max_merges: int):
         print("Pretokenizing...")
         print("*" * 80)
         ts = time.time()
         self._pretokenize(data_path)
+        self._init_pair_count()
         te = time.time()
         print(f"Pretokenization took {te - ts:.2f} seconds")
         print("*" * 80)
 
         print("Training...")
         ts = time.time()
+        previous_pair = None
+        previous_count = None
         while len(self.merges) < max_merges:
-            pair_count = self.get_pair_count()
-            if len(pair_count) == 0:  # exhausted all pairs to merge
-                break
-            max_pair, _ = self.find_max_pair(pair_count)
+            max_pair, count = self.pop_max_pair()
+            if (previous_pair, previous_count) == (max_pair, count):
+                break # no more new merges
             self.merges.append(max_pair)
             new_token = max_pair[0] + max_pair[1]
             self.vocab.append(new_token)
@@ -174,7 +201,7 @@ class BPETokenizer:
 
 if __name__ == "__main__":
     profile = False
-    data_path = "./data/TinyStoriesV2-GPT4-valid.txt"
+    data_path = "./data/TinyStoriesV2-GPT4-train.txt"
     max_merges = 800
     def main():
         tokenizer = BPETokenizer(num_processes=8)
