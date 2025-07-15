@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 
 
-class BPETokenizer:
+class BPETrainer:
     SPECIAL_TOKENS = ["<|endoftext|>"]
 
     PAT = (
@@ -200,15 +200,18 @@ class BPETokenizer:
 
         vocab = {idx: byte for idx, byte in enumerate(self.vocab)}
         return vocab, self.merges
+    
+    
 
 
 if __name__ == "__main__":
     import os
-    profile = True
+    profile = False
     data_path = "./data/TinyStoriesV2-GPT4-train.txt"
     max_merges = 10_000
+    num_processes = 10
     def main():
-        tokenizer = BPETokenizer(num_processes=8)
+        tokenizer = BPETrainer(num_processes)
         vocab, merges = tokenizer.train(data_path, max_merges)
         with open(f"./output/merges_{max_merges}.txt", "w") as f_merges:
             for merge in merges:
