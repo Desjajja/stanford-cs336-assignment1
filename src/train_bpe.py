@@ -205,15 +205,15 @@ class BPETokenizer:
 if __name__ == "__main__":
     import os
     profile = True
-    data_path = "./data/TinyStoriesV2-GPT4-valid.txt"
-    max_merges = 80
+    data_path = "./data/TinyStoriesV2-GPT4-train.txt"
+    max_merges = 10_000
     def main():
         tokenizer = BPETokenizer(num_processes=8)
         vocab, merges = tokenizer.train(data_path, max_merges)
-        with open("./output/merges.txt", "w") as f_merges:
+        with open(f"./output/merges_{max_merges}.txt", "w") as f_merges:
             for merge in merges:
                 f_merges.write(f"{merge[0]} {merge[1]}\n")
-        with open("./output/vocab.txt", "w") as f_vocab:
+        with open(f"./output/vocab_{max_merges}.txt", "w") as f_vocab:
             for idx, token in vocab.items():
                 f_vocab.write(f"{idx}\t{token}\n")
     if profile:
