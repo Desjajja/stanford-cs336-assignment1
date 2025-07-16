@@ -22,7 +22,6 @@ class BPETrainer:
     pair_count = defaultdict(int)
 
     def __init__(self, num_processes: int = 8):
-        # MAX_VOCAB = 60
         self.vocab = [token.encode() for token in self.SPECIAL_TOKENS]
         self.vocab.extend([bytes([i]) for i in range(256)])
         self.num_processes = num_processes  # Number of processes to use for parallelization
@@ -43,7 +42,7 @@ class BPETrainer:
         for future in concurrent.futures.as_completed(futures):
             try:
                 result = future.result()
-                print(result)
+                # print(result)
                 for byte, count in result.items():
                     self.pretokens[byte] += count
                 pbar.update(1)
@@ -152,7 +151,8 @@ class BPETrainer:
             fp.seek(start)
             chunk = fp.read(end - start).decode("utf-8", errors="ignore")
             # Run pre-tokenization on your chunk and store the counts for each pre-token
-        word_count = Counter(r.group().strip() for r in re.finditer(self.PAT, chunk) if r.group().strip())
+        word_count = Counter(r.group() for r in re.finditer(self.PAT, chunk))
+        # word_count = Counter(r.group().strip() for r in re.finditer(self.PAT, chunk) if r.group().strip())
         return {
             tuple(bytes([c]) for c in word.encode()): count
             for word, count in word_count.items()
@@ -185,7 +185,7 @@ class BPETrainer:
         pbar = tqdm(total=max_merges, desc="Training...")
         previous_pair = None
         previous_count = None
-        while len(self.merges) < max_merges:
+        while len(self.merges) < max_merges and len(self.pair_count) > 0:
             max_pair, count = self.pop_max_pair()
             if (previous_pair, previous_count) == (max_pair, count):
                 break # no more new merges
@@ -208,15 +208,16 @@ if __name__ == "__main__":
     import os
     profile = False
     data_path = "./data/TinyStoriesV2-GPT4-train.txt"
+    data_type = data_path.split('/')[-1].split('.')[0]
     max_merges = 10_000
     num_processes = 10
     def main():
         tokenizer = BPETrainer(num_processes)
         vocab, merges = tokenizer.train(data_path, max_merges)
-        with open(f"./output/merges_{max_merges}.txt", "w") as f_merges:
+        with open(f"./output/merges-{data_type}-{max_merges}.txt", "w") as f_merges:
             for merge in merges:
-                f_merges.write(f"{merge[0]} {merge[1]}\n")
-        with open(f"./output/vocab_{max_merges}.txt", "w") as f_vocab:
+                f_merges.write(f"{merge[0]}\t{merge[1]}\n")
+        with open(f"./output/vocab-{data_type}-{max_merges}.txt", "w") as f_vocab:
             for idx, token in vocab.items():
                 f_vocab.write(f"{idx}\t{token}\n")
     if profile:
@@ -228,7 +229,7 @@ if __name__ == "__main__":
         p.sort_stats("cumulative").print_stats(50)
         p.print_callees(20)
         # Save readable stats to a text file
-        with open(f"./output/cached_train_{max_merges}.txt", "w") as f:
+        with open(f"./output/cached_train-{max_merges}.txt", "w") as f:
             p.stream = f
             p.print_stats()
         if os.path.exists("./output/profile.txt"):
