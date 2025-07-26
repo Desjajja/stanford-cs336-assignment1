@@ -202,7 +202,7 @@ class BPETrainer:
         te = time.time()
         print(f"Done training in {te - ts:.2f} seconds")
 
-        vocab = {idx: byte for idx, byte in enumerate(self.vocab)}
+        vocab = {byte.decode('latin1').replace(' ', '\u0120'): idx for idx, byte in enumerate(self.vocab)}
         return vocab, self.merges
     
     
@@ -210,10 +210,14 @@ class BPETrainer:
 
 if __name__ == "__main__":
     import os
+    import json
+    
     profile = False
     data_path = "./data/TinyStoriesV2-GPT4-train.txt"
+    # data_path = "./data/brief.txt"
     data_type = data_path.split('/')[-1].split('.')[0]
     max_merges = 10_000
+    # max_merges = 8
     num_processes = 8
     def main():
         tokenizer = BPETrainer(num_processes)
@@ -221,10 +225,14 @@ if __name__ == "__main__":
         os.makedirs(f"./output/{data_type}_{max_merges}", exist_ok=True)
         with open(f"./output/{data_type}_{max_merges}/merges.txt", "w") as f_merges:
             for merge in merges:
-                f_merges.write(f"{merge[0]}\t{merge[1]}\n")
-        with open(f"./output/{data_type}_{max_merges}/vocab.txt", "w") as f_vocab:
-            for idx, token in vocab.items():
-                f_vocab.write(f"{idx}\t{token}\n")
+                f_merges.write(f"{merge[0].decode('latin1').replace(' ', 'Ġ')} {merge[1].decode('latin1').replace(' ', 'Ġ')}\n")
+        with open(f"./output/{data_type}_{max_merges}/vocab.json", "w") as f_vocab:
+            json.dump(
+                vocab,
+                f_vocab
+            )
+            # for idx, token in vocab.items():
+            #     f_vocab.write(f"{idx}\t{token}\n")
     if profile:
         import cProfile
         import pstats
