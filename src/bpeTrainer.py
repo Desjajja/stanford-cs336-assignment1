@@ -3,10 +3,10 @@ from typing import BinaryIO
 from collections import Counter, defaultdict
 import regex as re
 import concurrent.futures
-import copy
 import time
 from tqdm import tqdm
-
+import multiprocessing
+import traceback
 
 
 class BPETrainer:
@@ -86,6 +86,7 @@ class BPETrainer:
                 else:
                     if previous_token == new_merge:
                         self.pair_count[(merged_token_rhs, token[pleft])] -= count
+                        self.pair_count[(new_merge, token[pleft])] += count
                     token_copy.append(token[pleft])
                     previous_token = token[pleft]
                     pleft += 1
@@ -94,6 +95,7 @@ class BPETrainer:
                 token_copy.append(token[-1])
                 if previous_token == new_merge:
                     self.pair_count[(merged_token_rhs, token[pleft])] -= count
+                    self.pair_count[(new_merge, token[pleft])] += count
             if flag_modified:
                 changed_pretokens[token] = tuple(token_copy)
    
@@ -101,6 +103,76 @@ class BPETrainer:
             count = self.pretokens[ori_token]
             del self.pretokens[ori_token]
             self.pretokens[new_token] = count
+            
+    def _update_pretokens_parallel(self, pretokens: dict, new_merge: bytes, shared_pair_count, lock):
+
+        # pretokens_copy = copy.deepcopy(self.pretokens)
+        changed_pretokens = dict() # orgin pretoken -> updated pretoken
+        # assert pretokens is not None
+        for token, count in pretokens.items():
+            flag_modified = False
+            if len(token) < 2:
+                continue
+            pleft = 0
+            token_copy = list()
+            previous_token = None
+            merged_token_lhs = None
+            merged_token_rhs = None
+            while pleft < len(token) - 1:
+                pright = pleft + 1
+                if token[pleft] + token[pright] == new_merge:
+                    merged_token_lhs = token[pleft]
+                    merged_token_rhs = token[pright]
+                    
+                    token_copy.append(new_merge)
+                    if previous_token is None:
+                        pass
+                    elif previous_token == new_merge:
+                        with lock:
+                            shared_pair_count[(merged_token_rhs, merged_token_lhs)] -= count
+                            
+                            shared_pair_count[(new_merge, new_merge)] = (
+                                count + shared_pair_count.get((new_merge, new_merge), 0)
+                                )
+                    elif previous_token:
+                        with lock:
+                            shared_pair_count[(previous_token, merged_token_lhs)] -= count
+                            shared_pair_count[(previous_token, new_merge)] = (
+                                count + shared_pair_count.get((previous_token, new_merge), 0)
+                            )
+
+                    previous_token = new_merge
+                    flag_modified = True
+                    pleft += 2
+                else:
+                    if previous_token == new_merge:
+                        with lock:
+                            shared_pair_count[(merged_token_rhs, token[pleft])] -= count
+                            shared_pair_count[(new_merge, token[pleft])] = (
+                                count + shared_pair_count.get((new_merge, token[pleft]), 0)
+                            )
+                    token_copy.append(token[pleft])
+                    previous_token = token[pleft]
+                    pleft += 1
+                
+            if pleft == len(token) - 1:
+                token_copy.append(token[-1])
+                if previous_token == new_merge:
+                    with lock:
+                        shared_pair_count[(merged_token_rhs, token[pleft])] -= count
+                        shared_pair_count[(new_merge, token[pleft])] = (
+                                count + shared_pair_count.get((new_merge, token[pleft]), 0)
+                            )
+            if flag_modified:
+                changed_pretokens[token] = tuple(token_copy)
+
+        for ori_token, new_token in changed_pretokens.items():
+            count = pretokens[ori_token]
+            del pretokens[ori_token]
+            pretokens[new_token] = count
+            
+        return pretokens
+
 
     def _find_chunk_boundaries(self, fp: BinaryIO, desired_num_chunks: int, split_special_token: bytes) -> list[int]:
         """
@@ -177,7 +249,63 @@ class BPETrainer:
         return pair, count
 
 
+    def _split_pretokens(self):
+        shard_size = len(self.pretokens) // self.num_processes
+        self.pretoken_shards = [
+            dict(
+                list(self.pretokens.items())[i:i+shard_size]
+            )
+            for i in range(self.num_processes - 1)
+        ]
+        self.pretoken_shards.append(
+            dict( # last shard
+                list(self.pretokens.items())[(self.num_processes - 1) * shard_size:]
+            )
+        )
 
+
+    def train_parallel(self, data_path: str, max_merges: int):
+        ts = time.time()
+        self._pretokenize(data_path)
+        self._split_pretokens()
+        # assert self.pretoken_shards is not None
+        self._init_pair_count()
+        te = time.time()
+        print(f"Pretokenization took {te - ts:.2f} seconds")
+
+        ts = time.time()
+        pbar = tqdm(total=max_merges, desc="Training...")
+        previous_pair = None
+        previous_count = None
+        with multiprocessing.Manager() as manager:
+            lock = manager.Lock()
+            shared_pair_count = manager.dict(self.pair_count)
+           
+            while len(self.merges) < max_merges and len(shared_pair_count) > 0:
+                max_pair, count = max(shared_pair_count.items(), key=lambda item: (item[1], item[0]))
+                del shared_pair_count[max_pair]
+                
+                if (previous_pair, previous_count) == (max_pair, count):
+                    break # no more new merges
+                self.merges.append(max_pair)
+                new_token = max_pair[0] + max_pair[1]
+                self.vocab.append(new_token)
+                
+                with concurrent.futures.ProcessPoolExecutor(self.num_processes) as executor:
+                    futures = [executor.submit(
+                            self._update_pretokens_parallel, pretokens, new_token, shared_pair_count, lock
+                    ) for pretokens in self.pretoken_shards]
+                    # self._update_pretokens(new_token)
+                self.pretoken_shards = [f.result() for f in concurrent.futures.as_completed(futures)]
+                
+            pbar.update(1)
+        pbar.close()
+        te = time.time()
+        print(f"Done training in {te - ts:.2f} seconds")
+
+        vocab = {byte.decode('latin1').replace(' ', '\u0120'): idx for idx, byte in enumerate(self.vocab)}
+        return vocab, self.merges
+    
     def train(self, data_path: str, max_merges: int):
         ts = time.time()
         self._pretokenize(data_path)
@@ -213,10 +341,10 @@ if __name__ == "__main__":
     import json
     
     profile = False
-    data_path = "./data/TinyStoriesV2-GPT4-train.txt"
+    data_path = "./data/owt_train.txt"
     # data_path = "./data/brief.txt"
     data_type = data_path.split('/')[-1].split('.')[0]
-    max_merges = 10_000
+    max_merges = 32_000
     # max_merges = 8
     num_processes = 8
     def main():
