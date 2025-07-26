@@ -52,7 +52,9 @@ class BPETrainer:
         pbar.close()
         
     def _update_pretokens(self, new_merge: bytes):
-        pretokens_copy = copy.deepcopy(self.pretokens)
+        # pretokens_copy = copy.deepcopy(self.pretokens)
+        changed_pretokens = dict() # orgin pretoken -> updated pretoken
+        assert self.pretokens is not None
         for token, count in self.pretokens.items():
             flag_modified = False
             if len(token) < 2:
@@ -72,6 +74,7 @@ class BPETrainer:
                     if previous_token is None:
                         pass
                     elif previous_token == new_merge:
+                        self.pair_count[(merged_token_rhs, merged_token_lhs)] -= count
                         self.pair_count[(new_merge, new_merge)] += count
                     elif previous_token:
                         self.pair_count[(previous_token, merged_token_lhs)] -= count
@@ -92,12 +95,12 @@ class BPETrainer:
                 if previous_token == new_merge:
                     self.pair_count[(merged_token_rhs, token[pleft])] -= count
             if flag_modified:
-                del pretokens_copy[token]
-                pretokens_copy[tuple(token_copy)] = count
-                del token
-            else:
-                del token_copy
-        return pretokens_copy
+                changed_pretokens[token] = tuple(token_copy)
+   
+        for ori_token, new_token in changed_pretokens.items():
+            count = self.pretokens[ori_token]
+            del self.pretokens[ori_token]
+            self.pretokens[new_token] = count
 
     def _find_chunk_boundaries(self, fp: BinaryIO, desired_num_chunks: int, split_special_token: bytes) -> list[int]:
         """
@@ -161,6 +164,7 @@ class BPETrainer:
 
     def _init_pair_count(self):
         pair_count = defaultdict(int)
+        assert self.pretokens is not None
         for token, count in self.pretokens.items():
             if len(token) > 1:
                 for lhs, rhs in zip(token[:-1], token[1:]):
@@ -192,7 +196,7 @@ class BPETrainer:
             self.merges.append(max_pair)
             new_token = max_pair[0] + max_pair[1]
             self.vocab.append(new_token)
-            self.pretokens = self._update_pretokens(new_token)
+            self._update_pretokens(new_token)
             pbar.update(1)
         pbar.close()
         te = time.time()
@@ -210,14 +214,15 @@ if __name__ == "__main__":
     data_path = "./data/TinyStoriesV2-GPT4-train.txt"
     data_type = data_path.split('/')[-1].split('.')[0]
     max_merges = 10_000
-    num_processes = 10
+    num_processes = 8
     def main():
         tokenizer = BPETrainer(num_processes)
         vocab, merges = tokenizer.train(data_path, max_merges)
-        with open(f"./output/merges-{data_type}-{max_merges}.txt", "w") as f_merges:
+        os.makedirs(f"./output/{data_type}_{max_merges}", exist_ok=True)
+        with open(f"./output/{data_type}_{max_merges}/merges.txt", "w") as f_merges:
             for merge in merges:
                 f_merges.write(f"{merge[0]}\t{merge[1]}\n")
-        with open(f"./output/vocab-{data_type}-{max_merges}.txt", "w") as f_vocab:
+        with open(f"./output/{data_type}_{max_merges}/vocab.txt", "w") as f_vocab:
             for idx, token in vocab.items():
                 f_vocab.write(f"{idx}\t{token}\n")
     if profile:
