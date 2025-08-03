@@ -537,6 +537,7 @@ def run_load_checkpoint(
     """
     raise NotImplementedError
 
+from src.bpeTokenizer import BPETokenizer
 
 def get_tokenizer(
     vocab: dict[int, bytes],
@@ -558,8 +559,11 @@ def get_tokenizer(
     Returns:
         A BPE tokenizer that uses the provided vocab, merges, and special tokens.
     """
-    raise NotImplementedError
+    return BPETokenizer(vocab=vocab, merges=merges, special_tokens=special_tokens)
+    
 
+
+from src.bpeTrainer import BPETrainer
 
 def run_train_bpe(
     input_path: str | os.PathLike,
@@ -588,4 +592,7 @@ def run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
-    raise NotImplementedError
+    trainer = BPETrainer(num_processes=8, special_tokens=special_tokens)
+    max_merges = vocab_size - 256 - len(special_tokens)
+    vocab, merges = trainer.train(input_path, max_merges)
+    return vocab, merges

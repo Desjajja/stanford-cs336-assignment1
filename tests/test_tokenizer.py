@@ -9,8 +9,8 @@ import psutil
 import pytest
 import tiktoken
 
-from .adapters import get_tokenizer
-from .common import FIXTURES_PATH, gpt2_bytes_to_unicode
+from tests.adapters import get_tokenizer
+from tests.common import FIXTURES_PATH, gpt2_bytes_to_unicode
 
 VOCAB_PATH = FIXTURES_PATH / "gpt2_vocab.json"
 MERGES_PATH = FIXTURES_PATH / "gpt2_merges.txt"
@@ -462,3 +462,7 @@ def _encode(tokenizer, text):
     for just this function. We set the memory limit to 1MB.
     """
     return tokenizer.encode(text)
+
+
+if __name__ == "__main__":
+    test_overlapping_special_tokens()

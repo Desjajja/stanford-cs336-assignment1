@@ -1,8 +1,8 @@
 import json
 import time
 
-from .adapters import run_train_bpe
-from .common import FIXTURES_PATH, gpt2_bytes_to_unicode
+from tests.adapters import run_train_bpe
+from tests.common import FIXTURES_PATH, gpt2_bytes_to_unicode
 
 
 def test_train_bpe_speed():
@@ -85,4 +85,15 @@ def test_train_bpe_special_tokens(snapshot):
             "vocab_values": set(vocab.values()),
             "merges": merges,
         },
+    )
+    
+if __name__ == '__main__':
+
+    test_train_bpe_speed()
+    test_train_bpe()
+    import pickle
+    with open("tests/_snapshots/test_train_bpe_special_tokens.pkl", 'rb') as f:
+        snapshot = pickle.load(f)
+    test_train_bpe_special_tokens(
+        snapshot
     )

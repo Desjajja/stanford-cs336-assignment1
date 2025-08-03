@@ -17,17 +17,17 @@ class BPETrainer:
         + r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
     )  # pretokenization rule
 
-    pretokens = defaultdict(int)
-    merges = []
-    pair_count = defaultdict(int)
-
-    def __init__(self, num_processes: int = 8):
+    def __init__(self, num_processes: int = 8, special_tokens: list[str] | None = None):
+        self.pretokens = defaultdict(int)
+        self.merges = []
+        self.pair_count = defaultdict(int)
         self.vocab = [token.encode() for token in self.SPECIAL_TOKENS]
         self.vocab.extend([bytes([i]) for i in range(256)])
         self.num_processes = num_processes  # Number of processes to use for parallelization
-        print()
+        if special_tokens:
+            self.SPECIAL_TOKENS = special_tokens
 
-    def _pretokenize(self, data_path: str):
+    def _pretokenize(self, data_path: str | os.PathLike):
         with open(data_path, "rb") as fp:
             boundaries = self._find_chunk_boundaries(
                 fp, self.num_processes, self.SPECIAL_TOKENS[0].encode("utf-8")
@@ -263,7 +263,7 @@ class BPETrainer:
             )
         )
 
-    def train_parallel(self, data_path: str, max_merges: int):
+    def train_parallel(self, data_path: str | os.PathLike, max_merges: int):
         ts = time.time()
         self._pretokenize(data_path)
         self._split_pretokens()
@@ -463,7 +463,7 @@ class BPETrainer:
     #     vocab = {byte.decode('latin1').replace(' ', '\u0120'): idx for idx, byte in enumerate(self.vocab)}
     #     return vocab, self.merges
     
-    def train(self, data_path: str, max_merges: int):
+    def train(self, data_path: str | os.PathLike, max_merges: int):
         ts = time.time()
         self._pretokenize(data_path)
         self._init_pair_count()
@@ -487,7 +487,8 @@ class BPETrainer:
         te = time.time()
         print(f"Done training in {te - ts:.2f} seconds")
 
-        vocab = {byte.decode('latin1').replace(' ', '\u0120'): idx for idx, byte in enumerate(self.vocab)}
+        # vocab = {byte.decode('latin1').replace(' ', '\u0120'): idx for idx, byte in enumerate(self.vocab)}
+        vocab = dict(enumerate(self.vocab))
         return vocab, self.merges
     
     
@@ -506,7 +507,7 @@ if __name__ == "__main__":
     num_processes = 8
     def main():
         tokenizer = BPETrainer(num_processes)
-        vocab, merges = tokenizer.train_parallel(data_path, max_merges)
+        vocab, merges = tokenizer.train(data_path, max_merges)
         os.makedirs(f"./output/{data_type}_{max_merges}", exist_ok=True)
         with open(f"./output/{data_type}_{max_merges}/merges.txt", "w") as f_merges:
             for merge in merges:
