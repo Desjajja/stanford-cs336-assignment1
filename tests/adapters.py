@@ -9,6 +9,16 @@ import numpy.typing as npt
 import torch
 from torch import Tensor
 
+from src.tokenizer import BPETokenizer
+from src.modules import (
+    Linear,
+    Embedding,
+    RMSNorm,
+    Swiglu,
+    RotaryPositionalEmbedding as RoPE,
+    functional as F,
+    MultiheadSelfAttention,
+)
 
 
 def run_linear(
@@ -25,12 +35,13 @@ def run_linear(
         out_dim (int): The size of the output dimension
         weights (Float[Tensor, "d_out d_in"]): The linear weights to use
         in_features (Float[Tensor, "... d_in"]): The output tensor to apply the function to
-    
+
     Returns:
         Float[Tensor, "... d_out"]: The transformed output of your linear module.
     """
-
-    raise NotImplementedError
+    linear = Linear(d_in, d_out)
+    linear.load_state_dict(dict(weight=weights))
+    return linear.forward(in_features)
 
 
 def run_embedding(
@@ -47,12 +58,14 @@ def run_embedding(
         d_model (int): The size of the embedding dimension
         weights (Float[Tensor, "vocab_size d_model"]): The embedding vectors to fetch from
         token_ids (Int[Tensor, "..."]): The set of token ids to fetch from the Embedding layer
-    
+
     Returns:
         Float[Tensor, "... d_model"]: Batch of embeddings returned by your Embedding layer.
     """
 
-    raise NotImplementedError
+    embed = Embedding(vocab_size, d_model)
+    embed.load_state_dict({"weights": weights})
+    return embed.forward(token_ids=token_ids)
 
 
 def run_swiglu(
@@ -84,7 +97,10 @@ def run_swiglu(
     # swiglu.w1.weight.data = w1_weight
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
-    raise NotImplementedError
+    swiglu = Swiglu(d_model, d_ff)
+    weights = {"w1": w1_weight, "w2": w2_weight, "w3": w3_weight}
+    swiglu.load_state_dict(weights)
+    return swiglu.forward(in_features)
 
 
 def run_scaled_dot_product_attention(
@@ -105,7 +121,7 @@ def run_scaled_dot_product_attention(
     Returns:
         Float[Tensor, " ... queries d_v"]: Output of SDPA
     """
-    raise NotImplementedError
+    return F.scaled_dot_product_attention(Q, K, V, mask=mask)
 
 
 def run_multihead_self_attention(
@@ -139,7 +155,14 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    mha = MultiheadSelfAttention(d_model=d_model, num_heads=num_heads)
+    mha.load_state_dict(state_dict={
+        "k_proj.weight": k_proj_weight,
+        "v_proj.weight": v_proj_weight,
+        "q_proj.weight": q_proj_weight,
+        "out_proj.weight": o_proj_weight
+    })
+    return mha(in_features)
 
 
 def run_multihead_self_attention_with_rope(
@@ -179,7 +202,17 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    mha = MultiheadSelfAttention(d_model=d_model, num_heads=num_heads)
+    rope = RoPE(theta, d_model // num_heads, max_seq_len)
+    mha.load_state_dict(state_dict={
+        "k_proj.weight": k_proj_weight,
+        "v_proj.weight": v_proj_weight,
+        "q_proj.weight": q_proj_weight,
+        "out_proj.weight": o_proj_weight
+    })
+    attn_output = mha.forward(in_features, token_positions=token_positions, rope=rope)
+
+    return attn_output
 
 
 def run_rope(
@@ -201,7 +234,8 @@ def run_rope(
     Returns:
         Float[Tensor, " ... sequence_length d_k"]: Tensor with RoPEd input.
     """
-    raise NotImplementedError
+    rope = RoPE(theta=theta, d_k=d_k, max_seq_len=max_seq_len)
+    return rope(in_query_or_key, token_positions)
 
 
 def run_transformer_block(
@@ -302,7 +336,7 @@ def run_transformer_lm(
             evenly divisible by `num_heads`.
         d_ff (int): Dimensionality of the feed-forward inner layer (section 3.3).
         rope_theta (float): The RoPE $\Theta$ parameter.
-        weights (dict[str, Tensor]): 
+        weights (dict[str, Tensor]):
             State dict of our reference implementation. {num_layers} refers to an
             integer between `0` and `num_layers - 1` (the layer index).
             The keys of this dictionary are:
@@ -379,7 +413,12 @@ def run_rmsnorm(
         Float[Tensor,"... d_model"]: Tensor of with the same shape as `in_features` with the output of running
         RMSNorm of the `in_features`.
     """
-    raise NotImplementedError
+    in_dtype = in_features.dtype
+    rms_norm = RMSNorm(d_model, eps=eps)
+    rms_norm.load_state_dict(state_dict={"weights": weights})
+    in_features = in_features.to(torch.float32)
+    result = rms_norm.forward(in_features)
+    return result.to(in_dtype)
 
 
 def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
@@ -432,10 +471,12 @@ def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, "
         Float[Tensor, "..."]: Tensor of with the same shape as `in_features` with the output of
         softmax normalizing the specified `dim`.
     """
-    raise NotImplementedError
+    return F.softmax(in_features, dim=dim)
 
 
-def run_cross_entropy(inputs: Float[Tensor, " batch_size vocab_size"], targets: Int[Tensor, " batch_size"]) -> Float[Tensor, ""]:
+def run_cross_entropy(
+    inputs: Float[Tensor, " batch_size vocab_size"], targets: Int[Tensor, " batch_size"]
+) -> Float[Tensor, ""]:
     """Given a tensor of inputs and targets, compute the average cross-entropy
     loss across examples.
 
@@ -537,7 +578,6 @@ def run_load_checkpoint(
     """
     raise NotImplementedError
 
-from src.bpeTokenizer import BPETokenizer
 
 def get_tokenizer(
     vocab: dict[int, bytes],
@@ -560,10 +600,7 @@ def get_tokenizer(
         A BPE tokenizer that uses the provided vocab, merges, and special tokens.
     """
     return BPETokenizer(vocab=vocab, merges=merges, special_tokens=special_tokens)
-    
 
-
-from src.bpeTrainer import BPETrainer
 
 def run_train_bpe(
     input_path: str | os.PathLike,

@@ -465,4 +465,4 @@ def _encode(tokenizer, text):
 
 
 if __name__ == "__main__":
-    test_overlapping_special_tokens()
+    test_unicode_string_matches_tiktoken()

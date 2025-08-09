@@ -42,17 +42,18 @@ class BPETokenizer:
         with open(vocab_filepath, encoding="utf-8") as f:
             # vocab = dict(tuple(map(eval, line.strip().split("\t"))) for line in f if line.strip())
             vocab = json.load(f)
-            vocab_new = {idx: token.replace('\u0120', ' ').encode('latin1') for token, idx in vocab.items()}
+            vocab_new = {idx: token.replace('\u0120', ' ').encode('utf-8') for token, idx in vocab.items()}
             
         
         merges = []  
         with open(merges_filepath, encoding="utf-8") as f:
             # merges = [tuple(map(eval, line.strip().split(" "))) for line in f]
             for line in f:
-                output = tuple(
-                    map(lambda c: b" " if c == '\u0120' else c.encode(),
-                    line.strip().split(" "))
-                    )
+                # output = tuple(
+                    # map(lambda c: b" " if c == '\u0120' else c.encode(),
+                    # line.strip().split(" "))
+                    # )
+                output = tuple(map(lambda x: x.replace('\u0120', ' ').encode('utf-8'), line.strip('\n').split(' ')))
                 merges.append(output)
 
         return cls(vocab=vocab_new, merges=merges, special_tokens=special_tokens)
@@ -76,7 +77,7 @@ class BPETokenizer:
                 merged_list.append(special_tokens[idx].encode())
                 continue
             
-            for merge in self.merges:
+            for idx, merge in enumerate(self.merges):
                 mleft, mright = merge                
                 for i in range(len(pretoken) - 1):
                     if pretoken[i] == mleft and pretoken[i+1] == mright:
@@ -135,8 +136,10 @@ if __name__ == "__main__":
     
     output_dir = "output/TinyStoriesV2-GPT4-train_10000/"
     tokenizer = BPETokenizer.from_files(
-        vocab_filepath= output_dir + "vocab.json",
-        merges_filepath= output_dir + "merges.txt",
+        # vocab_filepath= output_dir + "vocab.json",
+        # merges_filepath= output_dir + "merges.txt",
+        vocab_filepath= "tests/fixtures/gpt2_vocab.json",
+        merges_filepath= "tests/fixtures/gpt2_merges.txt",
         special_tokens=["<|endoftext|>"],
     )
     # tokenizer.encode("    ")
