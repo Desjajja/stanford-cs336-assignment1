@@ -16,7 +16,7 @@ class MultiheadSelfAttention(nn.Module):
         self.k_proj = Linear(d_model, d_model)
         self.v_proj = Linear(d_model, d_model)
         self.q_proj = Linear(d_model, d_model)
-        self.out_proj = Linear(d_model, d_model)
+        self.output_proj = Linear(d_model, d_model)
         # self.rope = RotaryPositionalEmbedding()
 
     def forward(
@@ -34,5 +34,5 @@ class MultiheadSelfAttention(nn.Module):
             K = rope(K, token_positions)
         attn_output = F.scaled_dot_product_attention(Q, K, V, mask=torch.tril(torch.ones(seq, seq)))
         # merge features across attention heads
-        attn_output = self.out_proj(rearrange(attn_output, "b h seq e -> b seq (h e)"))
+        attn_output = self.output_proj(rearrange(attn_output, "b h seq e -> b seq (h e)"))
         return attn_output

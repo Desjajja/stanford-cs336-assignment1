@@ -30,12 +30,12 @@ class BPETokenizer:
         if self.special_tokens != []:
             self.PAT = (
                 f"(?:{'|'.join(map(re.escape, self.special_tokens))})|"
-                # + r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-                 r"'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+|\s+(?!\S)|\s+| ?[^\s\p{L}\p{N}]+?"
+                + r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+                #  r"'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+|\s+(?!\S)|\s+| ?[^\s\p{L}\p{N}]+?"
             )  # pretokenization rule
         else:
-            self.PAT = r"'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+|\s+(?!\S)|\s+| ?[^\s\p{L}\p{N}]+?"
-            # self.PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+            # self.PAT = r"'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+|\s+(?!\S)|\s+| ?[^\s\p{L}\p{N}]+?"
+            self.PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
     @classmethod
     def from_files(cls, vocab_filepath, merges_filepath, special_tokens=None):

@@ -18,6 +18,7 @@ from src.modules import (
     RotaryPositionalEmbedding as RoPE,
     functional as F,
     MultiheadSelfAttention,
+    TransformerBlock
 )
 
 
@@ -98,8 +99,7 @@ def run_swiglu(
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
     swiglu = Swiglu(d_model, d_ff)
-    weights = {"w1": w1_weight, "w2": w2_weight, "w3": w3_weight}
-    swiglu.load_state_dict(weights)
+    swiglu.load_state_dict(state_dict={"w1.weight": w1_weight, "w2.weight": w2_weight, "w3.weight": w3_weight})
     return swiglu.forward(in_features)
 
 
@@ -156,12 +156,14 @@ def run_multihead_self_attention(
         implementation with the given QKV projection weights and input features.
     """
     mha = MultiheadSelfAttention(d_model=d_model, num_heads=num_heads)
-    mha.load_state_dict(state_dict={
-        "k_proj.weight": k_proj_weight,
-        "v_proj.weight": v_proj_weight,
-        "q_proj.weight": q_proj_weight,
-        "out_proj.weight": o_proj_weight
-    })
+    mha.load_state_dict(
+        state_dict={
+            "k_proj.weight": k_proj_weight,
+            "v_proj.weight": v_proj_weight,
+            "q_proj.weight": q_proj_weight,
+            "out_proj.weight": o_proj_weight,
+        }
+    )
     return mha(in_features)
 
 
@@ -204,12 +206,14 @@ def run_multihead_self_attention_with_rope(
     """
     mha = MultiheadSelfAttention(d_model=d_model, num_heads=num_heads)
     rope = RoPE(theta, d_model // num_heads, max_seq_len)
-    mha.load_state_dict(state_dict={
-        "k_proj.weight": k_proj_weight,
-        "v_proj.weight": v_proj_weight,
-        "q_proj.weight": q_proj_weight,
-        "out_proj.weight": o_proj_weight
-    })
+    mha.load_state_dict(
+        state_dict={
+            "k_proj.weight": k_proj_weight,
+            "v_proj.weight": v_proj_weight,
+            "q_proj.weight": q_proj_weight,
+            "out_proj.weight": o_proj_weight,
+        }
+    )
     attn_output = mha.forward(in_features, token_positions=token_positions, rope=rope)
 
     return attn_output
@@ -308,7 +312,13 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    transformer = TransformerBlock(d_model, num_heads, d_ff, max_seq_len, theta)
+    # weights["ffn.w1.weight"] = weights["ffn.w1.weight"].T
+    # weights["ffn.w2.weight"] = weights["ffn.w2.weight"].T
+    # weights["ffn.w3.weight"] = weights["ffn.w3.weight"].T
+    print(list(weights.keys()))
+    transformer.load_state_dict(state_dict=weights)
+    return transformer(in_features)
 
 
 def run_transformer_lm(
@@ -335,7 +345,7 @@ def run_transformer_lm(
         num_heads (int): Number of heads to use in multi-headed attention. `d_model` must be
             evenly divisible by `num_heads`.
         d_ff (int): Dimensionality of the feed-forward inner layer (section 3.3).
-        rope_theta (float): The RoPE $\Theta$ parameter.
+        rope_theta (float): The RoPE $\\Theta$ parameter.
         weights (dict[str, Tensor]):
             State dict of our reference implementation. {num_layers} refers to an
             integer between `0` and `num_layers - 1` (the layer index).
@@ -415,7 +425,7 @@ def run_rmsnorm(
     """
     in_dtype = in_features.dtype
     rms_norm = RMSNorm(d_model, eps=eps)
-    rms_norm.load_state_dict(state_dict={"weights": weights})
+    rms_norm.load_state_dict(state_dict={"weight": weights})
     in_features = in_features.to(torch.float32)
     result = rms_norm.forward(in_features)
     return result.to(in_dtype)

@@ -5,7 +5,7 @@ from einops import einsum, reduce
 class RMSNorm(nn.Module):
     def __init__(self, d_model: int, eps: float = 1e-5, device=None, dtype=None) -> None:
         super().__init__()
-        self.weights = nn.Parameter(
+        self.weight = nn.Parameter(
             torch.ones(d_model, device=device, dtype=dtype)
         )
         self.eps = eps
@@ -20,6 +20,6 @@ class RMSNorm(nn.Module):
         )
         
         return einsum(
-            x / rms, self.weights,
+            x / rms, self.weight,
             "... d_model, d_model -> ... d_model"
         )
