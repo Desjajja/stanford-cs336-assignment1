@@ -14,22 +14,13 @@ class BPETokenizer:
         self.merges = merges
         self.special_tokens = set(special_tokens) if special_tokens else set()
         
-        # Add special tokens to vocabulary if they're not already there
-        for special_token in self.special_tokens:
-            special_token_bytes = special_token.encode('utf-8')
-            if special_token_bytes not in self.token2idx:
-                # Add special token to vocabulary with next available index
-                next_idx = max(self.idx2token.keys()) + 1 if self.idx2token else 0
-                self.token2idx[special_token_bytes] = next_idx
-                self.idx2token[next_idx] = special_token_bytes
-        
-        # Build regex pattern
+        # Build regex pattern - special tokens MUST come first to be matched properly
         if self.special_tokens:
             # Sort special tokens by length (descending) to match longer tokens first
             sorted_special = sorted(self.special_tokens, key=len, reverse=True)
             special_pattern = "|".join(re.escape(token) for token in sorted_special)
             self.PAT = (
-                f"(?:{special_pattern})|"
+                f"({special_pattern})|"
                 + r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
             )
         else:
@@ -40,14 +31,6 @@ class BPETokenizer:
         with open(vocab_filepath, encoding="utf-8") as f:
             vocab = json.load(f)
             vocab_new = {idx: token.replace('\u0120', ' ').encode('utf-8') for token, idx in vocab.items()}
-        
-        # Ensure all possible bytes (0-255) are in vocabulary
-        max_idx = max(vocab_new.keys()) if vocab_new else -1
-        for byte_val in range(256):
-            byte_token = bytes([byte_val])
-            if byte_token not in {token for token in vocab_new.values()}:
-                max_idx += 1
-                vocab_new[max_idx] = byte_token
         
         merges = []  
         with open(merges_filepath, encoding="utf-8") as f:

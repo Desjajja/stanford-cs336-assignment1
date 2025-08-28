@@ -5,7 +5,6 @@ from jaxtyping import Float, Int
 from torch import Tensor
 from einops import rearrange
 from src.modules import RotaryPositionalEmbedding as RoPE
-# from modules import RotaryPositionalEmbedding
 
 
 class MultiheadSelfAttention(nn.Module):
@@ -17,16 +16,15 @@ class MultiheadSelfAttention(nn.Module):
         self.v_proj = Linear(d_model, d_model)
         self.q_proj = Linear(d_model, d_model)
         self.output_proj = Linear(d_model, d_model)
-        # self.rope = RotaryPositionalEmbedding()
 
     def forward(
         self,
-        x: Float[Tensor, " batch ... seq_len d_in"],
+        x: Float[Tensor, " batch ... seq_len d_model"],
         token_positions: Int[Tensor, " seq_len"] | None = None,
         rope: RoPE | None = None,
-    ) -> Float[Tensor, " batch ... seq_len d_out"]:
+    ) -> Float[Tensor, " batch ... seq_len d_model"]:
         seq = x.shape[-2]
-        Q = rearrange(self.q_proj(x), "b seq (h d_k) -> b h seq d_k", h=self.num_heads)
+        Q = rearrange(self.q_proj(x), "b seq (h d_k) -> b h seq d_k", h=self.num_heads) # d_k == d_v == d_model / h
         K = rearrange(self.k_proj(x), "b seq (h d_k) -> b h seq d_k", h=self.num_heads)
         V = rearrange(self.v_proj(x), "b seq (h d_v) -> b h seq d_v", h=self.num_heads)
         if token_positions is not None and rope is not None:
